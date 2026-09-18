@@ -23,7 +23,7 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
-  }
+  },
 );
 
 // ── Tool listing ──────────────────────────────────────────────────────────────
@@ -49,16 +49,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (message.includes("not initialized") || message.includes("NJS-003")) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Database not connected. Please use the oracle_connect tool first.\n\nError: ${message}`
+        `Database not connected. Please use the oracle_connect tool first.\n\nError: ${message}`,
       );
     }
 
     // Surface Oracle ORA- errors clearly
     if (message.includes("ORA-")) {
-      throw new McpError(
-        ErrorCode.InternalError,
-        `Oracle error: ${message}`
-      );
+      throw new McpError(ErrorCode.InternalError, `Oracle error: ${message}`);
     }
 
     throw new McpError(ErrorCode.InternalError, message);
@@ -88,12 +85,21 @@ async function maybeAutoConnect(): Promise<void> {
   if (connectionString && username && password) {
     console.error("Auto-connecting to Oracle via environment variables…");
     try {
-      await connectionManager.initialize({ connectionString, username, password });
+      await connectionManager.initialize({
+        connectionString,
+        username,
+        password,
+      });
       console.error("Auto-connection successful.");
     } catch (err) {
+      // IMPORTANT: always destroy the pool on failure so no background
+      // reconnection thread survives to retry bad credentials against Oracle.
+      // A lingering pool with wrong credentials will keep firing failed-login
+      // attempts and can lock the Oracle account even while the server is idle.
+      await connectionManager.close();
       console.error(
-        "Auto-connection failed (you can still connect manually via oracle_connect):",
-        err
+        "Auto-connection failed — pool destroyed. Update your credentials and restart, or call oracle_connect manually.\nError:",
+        err,
       );
     }
   }
